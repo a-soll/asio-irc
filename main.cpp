@@ -1,100 +1,42 @@
-#include <ctime>
+#include <chat/chat.h>
+#include <fstream>
 #include <iostream>
-#include <regex>
-#include <sstream>
+#include <string>
 
-#include <boost/algorithm/string/trim.hpp>
-#include <boost/asio.hpp>
-#include <boost/date_time/posix_time/posix_time.hpp>
-
-#include "irc_client.hpp"
-#include "extract_regex_groups.hpp"
-
-using namespace std::literals;
-
-namespace asio = boost::asio;
-
-void say_time(
-    kq::irc::client& client,
-    std::string_view who,
-    std::string_view where,
-    std::string_view message
-) {
-    std::string nick;
-    kq::extract_regex_groups(
-        who.data(),
-        std::regex{"([^!:]+)"},
-        std::tie(nick)
-    );
-
-    std::cout << "NICK: " << nick << std::endl;
-
-    std::string receiver;
-    if(where.size() > 1 && where[1] == '#') {
-        receiver = std::string{where};
-    } else {
-        receiver = nick;
+/**
+ * [0] = nick
+ * [1] = token
+ */
+static std::vector<std::string> get_token() {
+    std::ifstream f;
+    std::string buf;
+    std::vector<std::string> ret(2);
+    f.open("config");
+    while (std::getline(f, buf)) {
+        if (ret[0].empty()) {
+            ret[0] = buf;
+        } else if (ret[1].empty()) {
+            ret[1] = buf;
+        } else {
+            ret[2] = buf;
+            break;
+        }
     }
-
-    if(message != "!time"){
-        return;
-    }
-
-    auto result = std::time(nullptr);
-    std::stringstream reply;
-    reply << nick << ": "
-          << std::asctime(std::localtime(&result));
-    client.say(receiver, reply.str());
+    return ret;
 }
 
-void greet(
-    kq::irc::client& client,
-    std::string_view who,
-    std::string_view where,
-    std::string_view message
-) {
-    std::string nick;
-    kq::extract_regex_groups(
-        who.data(),
-        std::regex{"([^!:]+)"},
-        std::tie(nick)
-    );
-    boost::algorithm::trim(nick);
+int main() {
+    auto config          = get_token();
+    std::string &nick    = config[0];
+    std::string &token   = config[1];
+    std::string &channel = config[2];
 
-    std::cout << "NICK: " << nick << std::endl;
+    std::cout << "NICK: " << nick << '\n';
+    std::cout << "TOKEN: " << token << '\n';
+    std::cout << "CHANNEL: " << channel << '\n';
 
-    if(nick == client.get_settings().nick) {
-        return;
-    }
+    chat::irc::settings settings{nick, token, channel};
+    chat::Chat e(settings);
 
-    std::string dest{where};
-    boost::algorithm::trim(dest);
-    client.say(dest, "Hello, " + nick + "!");
-}
-
-int main()
-{
-    asio::io_context io;
-
-    kq::irc::settings settings{
-        "irc.freenode.org",
-        6667,
-        "ProgMag"
-    };
-
-    kq::irc::client irc{io, settings};
-
-    irc.register_handler("001", [&](auto&&...){
-        irc.join("#progmag");
-    });
-
-    irc.register_handler("PRIVMSG", [&](auto&&... views){
-        say_time(irc, views...);
-    });
-
-    irc.register_handler("JOIN", [&](auto&&... views){
-        greet(irc, views...);
-    });
-
-    io.run();
+    e.async_read_chat();
 }

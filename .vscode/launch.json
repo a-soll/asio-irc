@@ -1,0 +1,18 @@
+{
+    "configurations": [
+      {
+        "name": "Test",
+        "type": "cppdbg",
+        "request": "launch",
+        "program": "${workspaceRoot}/debug/exe",
+        "args": [],
+        "stopAtEntry": false,
+        "cwd": "${workspaceRoot}",
+        "environment": [],
+        "externalConsole": false,
+        "MIMode": "lldb",
+        "preLaunchTask": "irc"
+      },
+    ],
+    "version": "2.0.0"
+  }
