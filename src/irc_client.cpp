@@ -1,13 +1,8 @@
-﻿#include <boost/coroutine2/all.hpp>
-#include <chat/irc_client.h>
-#include <chrono>
-#include <future>
+﻿#include <chat/irc_client.h>
 #include <iostream>
 #include <istream>
 #include <sstream>
 #include <stdexcept>
-
-using namespace std::chrono;
 
 namespace chat {
 namespace irc {
