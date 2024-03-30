@@ -37,7 +37,7 @@ class client {
     void register_on_connect(std::function<void()> handler);
 
     inline auto const &get_settings() const {
-        return _settings;
+        return this->_settings;
     }
 
   private:

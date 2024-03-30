@@ -9,12 +9,12 @@ namespace irc {
 
 /**
  * other example options:
- * this->_irc.register_handler("PRIVMSG", [this](auto &&...views) {
- *     say_time(this->_irc, views...);
+ * this->_irc.register_handler("PRIVMSG", [this](std::string_view message) {
+ *     this->say_time(this->_irc, views...);
  * });
  *
- * this->_irc.register_handler("JOIN", [this](auto &&...views) {
- *     greet(this->irc, views...);
+ * this->_irc.register_handler("JOIN", [this](std::string_view message) {
+ *     this->greet(this->irc, views...);
  * });
  */
 client::client(
@@ -33,26 +33,26 @@ client::client(
     register_handler("PING", [this](std::string_view message) {
         std::stringstream pong;
         pong << "PONG :" << message;
-        send_line(pong.str());
+        this->send_line(pong.str());
     });
 
     register_handler("001", [this](std::string_view message) {
         this->join(this->_settings.channel);
     });
 
-    _connect();
+    this->_connect();
 }
 
 void client::join(std::string_view channel) {
     std::stringstream msg;
     msg << "JOIN #" << channel;
-    send_line(msg.str());
+    this->send_line(msg.str());
 }
 
 void client::say(std::string_view receiver, std::string_view message) {
     std::stringstream msg;
     msg << "PRIVMSG " << receiver << " :" << message;
-    send_line(msg.str());
+    this->send_line(msg.str());
 }
 
 void client::send_line(const std::string &data) {
@@ -66,23 +66,23 @@ void client::send_line(const std::string &data) {
     // moment so we can safely proceed
     // to send the new message.
     if (this->_to_write.size() == 1)
-        _send_raw();
+        this->_send_raw();
 }
 
 void client::register_handler(std::string &&name, message_handler handler) {
-    _handlers[std::move(name)].push_back(handler);
+    this->_handlers[std::move(name)].push_back(handler);
 }
 
 void client::register_on_connect(std::function<void()> handler) {
-    _on_connect_handlers.push_back(handler);
+    this->_on_connect_handlers.push_back(handler);
 }
 
 void client::_connect() {
-    _socket.close();
+    this->_socket.close();
     tcp::resolver resolver(_ctx);
 
     auto handler = [this](auto &&...params) {
-        _on_hostname_resolved(std::forward<decltype(params)>(params)...);
+        this->_on_hostname_resolved(std::forward<decltype(params)>(params)...);
     };
 
     resolver.async_resolve(this->_host, std::to_string(this->_port), handler);
@@ -127,7 +127,7 @@ void client::_on_hostname_resolved(
     tcp::resolver::results_type results
 ) {
     if (error) {
-        _connect();
+        this->_connect();
         return;
     }
     if (!results.size()) {
@@ -136,25 +136,25 @@ void client::_on_hostname_resolved(
         throw std::runtime_error(msg.str());
     }
     auto handler = [this](auto const &error) { this->_on_connected(error); };
-    _socket.async_connect(*results, handler);
+    this->_socket.async_connect(*results, handler);
 }
 
 void client::_on_connected(boost::system::error_code const &error) {
     if (error) {
-        _connect();
+        this->_connect();
         return;
     }
-    _identify();
+    this->_identify();
     for (auto &handler : _on_connect_handlers) {
         handler();
     }
-    _await_new_line();
+    this->_await_new_line();
 }
 
 void client::_await_new_line() {
     auto handler = [this](auto const &error, std::size_t s) {
         if (error) {
-            _connect();
+            this->_connect();
             return;
         }
 
@@ -162,8 +162,8 @@ void client::_await_new_line() {
         std::string line;
         std::getline(i, line);
 
-        _on_new_line(line);
-        _await_new_line();
+        this->_on_new_line(line);
+        this->_await_new_line();
     };
     asio::async_read_until(this->_socket, this->_in_buf, "\r\n", handler);
 }
@@ -172,7 +172,7 @@ void client::_on_new_line(std::string const &message) {
     std::string type;
     type = this->_parse_type(message);
 
-    _handle_message(type, message);
+    this->_handle_message(type, message);
 }
 
 void client::_handle_message(std::string const &type, std::string_view message) {
@@ -210,7 +210,7 @@ void client::_handle_write(
     }
 
     if (!this->_to_write.empty()) {
-        _send_raw();
+        this->_send_raw();
     }
 }
 
