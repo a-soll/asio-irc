@@ -17,12 +17,18 @@ namespace irc {
  *     greet(this->irc, views...);
  * });
  */
-client::client(asio::io_context &ctx, irc::settings const &settings)
-    : ctx{ctx}
-    , settings{settings}
-    , socket{ctx} {
-    this->host = "irc.chat.twitch.tv";
-    this->port = 6667;
+client::client(
+    asio::io_context &ctx,
+    irc::settings const &settings,
+    completion_handler c_handler
+)
+    : _ctx{ctx}
+    , _settings{settings}
+    , _socket{ctx}
+    , _completion_handler(std::move(c_handler)) {
+
+    this->_host = "irc.chat.twitch.tv";
+    this->_port = 6667;
 
     register_handler("PING", [this](std::string_view message) {
         std::stringstream pong;
@@ -31,10 +37,10 @@ client::client(asio::io_context &ctx, irc::settings const &settings)
     });
 
     register_handler("001", [this](std::string_view message) {
-        this->join(this->settings.channel);
+        this->join(this->_settings.channel);
     });
 
-    connect();
+    _connect();
 }
 
 void client::join(std::string_view channel) {
@@ -49,42 +55,43 @@ void client::say(std::string_view receiver, std::string_view message) {
     send_line(msg.str());
 }
 
-void client::send_line(std::string data) {
+void client::send_line(const std::string &data) {
     std::cout << "Sending: " << data << std::endl;
-    data += "\r\n";
-    to_write.push_back(std::move(data));
+    std::string m(data); // gross copy
+    m += "\r\n";
+    this->_to_write.push_back(std::move(m));
     // if size == 1 then there is only
     // the line we've just added.
     // Nothing is being sent at this
     // moment so we can safely proceed
     // to send the new message.
-    if (to_write.size() == 1)
-        send_raw();
+    if (this->_to_write.size() == 1)
+        _send_raw();
 }
 
-void client::register_handler(std::string name, message_handler handler) {
-    handlers[std::move(name)].push_back(handler);
+void client::register_handler(std::string &&name, message_handler handler) {
+    _handlers[std::move(name)].push_back(handler);
 }
 
 void client::register_on_connect(std::function<void()> handler) {
-    on_connect_handlers.push_back(handler);
+    _on_connect_handlers.push_back(handler);
 }
 
-void client::connect() {
-    socket.close();
-    tcp::resolver resolver(ctx);
+void client::_connect() {
+    _socket.close();
+    tcp::resolver resolver(_ctx);
 
     auto handler = [this](auto &&...params) {
-        on_hostname_resolved(std::forward<decltype(params)>(params)...);
+        _on_hostname_resolved(std::forward<decltype(params)>(params)...);
     };
 
-    resolver.async_resolve(this->host, std::to_string(this->port), handler);
+    resolver.async_resolve(this->_host, std::to_string(this->_port), handler);
 }
 
 /**
- * the type is between the first and second space in the string_view
+ * the type is between the first and second space in the string
  */
-std::string client::parse_type(const std::string &line) {
+std::string client::_parse_type(const std::string &line) {
     bool first_space = false;
     std::string_view sv(&line[line.find(".tv")]);
     std::string type;
@@ -104,89 +111,89 @@ std::string client::parse_type(const std::string &line) {
     return type;
 }
 
-void client::identify() {
+void client::_identify() {
     std::stringstream msg;
-    msg << "PASS oauth:" + this->settings.token;
+    msg << "PASS oauth:" + this->_settings.token;
     this->send_line(msg.str());
 
     msg.str("");
-    msg << "NICK " << this->settings.nick;
+    msg << "NICK " << this->_settings.nick;
     this->send_line(msg.str());
     this->send_line("CAP REQ :twitch.tv/tags");
 }
 
-void client::on_hostname_resolved(
+void client::_on_hostname_resolved(
     boost::system::error_code const &error,
     tcp::resolver::results_type results
 ) {
     if (error) {
-        connect();
+        _connect();
         return;
     }
     if (!results.size()) {
         std::stringstream msg;
-        msg << "Failed to resolve '" << this->host << "'";
+        msg << "Failed to resolve '" << this->_host << "'";
         throw std::runtime_error(msg.str());
     }
-    auto handler = [this](auto const &error) { this->on_connected(error); };
-    socket.async_connect(*results, handler);
+    auto handler = [this](auto const &error) { this->_on_connected(error); };
+    _socket.async_connect(*results, handler);
 }
 
-void client::on_connected(boost::system::error_code const &error) {
+void client::_on_connected(boost::system::error_code const &error) {
     if (error) {
-        connect();
+        _connect();
         return;
     }
-    identify();
-    for (auto &handler : on_connect_handlers) {
+    _identify();
+    for (auto &handler : _on_connect_handlers) {
         handler();
     }
-    await_new_line();
+    _await_new_line();
 }
 
-void client::await_new_line() {
+void client::_await_new_line() {
     auto handler = [this](auto const &error, std::size_t s) {
         if (error) {
-            connect();
+            _connect();
             return;
         }
 
-        std::istream i{&this->in_buf};
+        std::istream i{&this->_in_buf};
         std::string line;
         std::getline(i, line);
 
-        on_new_line(line);
-        await_new_line();
+        _on_new_line(line);
+        _await_new_line();
     };
-    asio::async_read_until(this->socket, this->in_buf, "\r\n", handler);
+    asio::async_read_until(this->_socket, this->_in_buf, "\r\n", handler);
 }
 
-void client::on_new_line(std::string const &message) {
+void client::_on_new_line(std::string const &message) {
     std::string type;
-    type = this->parse_type(message);
+    type = this->_parse_type(message);
 
-    handle_message(type, message);
+    _handle_message(type, message);
 }
 
-void client::handle_message(std::string const &type, std::string_view message) {
-    std::cout << message << '\n';
-    for (auto const &h : handlers[type]) {
+void client::_handle_message(std::string const &type, std::string_view message) {
+    for (auto const &h : _handlers[type]) {
         h(message);
     }
+    this->_completion_handler(message);
 }
 
-void client::send_raw() {
-    if (to_write.empty()) {
+void client::_send_raw() {
+    if (this->_to_write.empty()) {
         return;
     }
 
-    socket.async_send(
-        asio::buffer(to_write.front().data(), to_write.front().size()),
-        [this](auto &&...params) { handle_write(params...); }
+    _socket.async_send(
+        asio::buffer(this->_to_write.front().data(), this->_to_write.front().size()),
+        [this](auto &&...params) { this->_handle_write(params...); }
     );
 }
 
-void client::handle_write(
+void client::_handle_write(
     boost::system::error_code const &error,
     std::size_t bytes_read
 ) {
@@ -194,16 +201,16 @@ void client::handle_write(
         std::cerr << "Error: " << error << std::endl;
         return;
     }
-    auto to_erase = std::min(bytes_read, to_write.front().size());
-    auto &buf     = to_write.front();
+    auto to_erase = std::min(bytes_read, this->_to_write.front().size());
+    auto &buf     = this->_to_write.front();
     buf.erase(buf.begin(), buf.begin() + to_erase);
 
     if (buf.empty()) {
-        to_write.erase(to_write.begin());
+        this->_to_write.erase(this->_to_write.begin());
     }
 
-    if (!to_write.empty()) {
-        send_raw();
+    if (!this->_to_write.empty()) {
+        _send_raw();
     }
 }
 

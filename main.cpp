@@ -36,7 +36,8 @@ int main() {
     std::cout << "CHANNEL: " << channel << '\n';
 
     chat::irc::settings settings{nick, token, channel};
-    chat::Chat e(settings);
-
+    chat::Chat e(settings, [](std::string_view message) {
+        std::cout << "M: " << message << std::endl;
+    });
     e.async_read_chat();
 }
