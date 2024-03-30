@@ -36,7 +36,7 @@ class client {
     void register_handler(std::string &&name, message_handler handler);
     void register_on_connect(std::function<void()> handler);
 
-    auto const &get_settings() const {
+    inline auto const &get_settings() const {
         return _settings;
     }
 
