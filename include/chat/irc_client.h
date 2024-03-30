@@ -41,6 +41,7 @@ class client {
     }
 
   private:
+    // @TODO: get rid of this copy
     std::string _parse_type(const std::string &line);
     completion_handler _completion_handler;
     using tcp = asio::ip::tcp;
