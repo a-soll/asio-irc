@@ -6,6 +6,7 @@
 /**
  * [0] = nick
  * [1] = token
+ * [2] = channel
  */
 static std::vector<std::string> get_token() {
     std::ifstream f;
